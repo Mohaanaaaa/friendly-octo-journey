@@ -1,7 +1,9 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk
 import shutil
 import os
+
 
 class FolderImageRenamer:
     def __init__(self, root):
@@ -15,6 +17,8 @@ class FolderImageRenamer:
         self.images = []
         self.current_image_index = 0
         self.dest_folder_path = ""
+        self.current_image_obj = None
+        self.zoom_factor = 1.0  # For zooming
 
         # Setup UI
         self.setup_ui()
@@ -24,6 +28,19 @@ class FolderImageRenamer:
         self.image_frame = tk.Frame(self.root, width=500, height=600, bd=2, relief=tk.SUNKEN)
         self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
+        # Create a frame for tools above the canvas
+        self.tools_frame = tk.Frame(self.image_frame)
+        self.tools_frame.pack(side=tk.TOP, fill=tk.X)
+
+        # Add zoom buttons
+        self.zoom_in_btn = tk.Button(self.tools_frame, text="Zoom In", command=self.zoom_in)
+        self.zoom_in_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        self.zoom_out_btn = tk.Button(self.tools_frame, text="Zoom Out", command=self.zoom_out)
+        self.zoom_out_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        self.auto_fit_btn = tk.Button(self.tools_frame, text="Auto Fit", command=self.auto_fit)
+        self.auto_fit_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        
+        # Canvas for image display
         self.canvas = tk.Canvas(self.image_frame, bg='gray')
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
@@ -118,18 +135,68 @@ class FolderImageRenamer:
             self.canvas.create_text(250, 200, text="No images found", fill="black", font=("Arial", 16))
             return
         image_path = self.images[index]
-        img = Image.open(image_path)
-        # Resize to fit canvas
+        #img = Image.open(image_path)
+        self.original_image = Image.open(image_path)
+        self.zoom_factor = 1.0  # Reset zoom factor when loading new image
+        self.render_image()
+        
+        #Resize to fit canvas
+        #canvas_width = self.canvas.winfo_width()
+        #canvas_height = self.canvas.winfo_height()
+        #if canvas_width < 10 or canvas_height < 10:
+            # Default size if not yet rendered
+           ##canvas_height = 400
+        #img.thumbnail((canvas_width, canvas_height))
+        #self.current_image = ImageTk.PhotoImage(img)
+        #self.canvas.delete("all")
+        #self.canvas.create_image(canvas_width/2, canvas_height/2, image=self.current_image)
+    
+    def render_image(self):
+        from PIL import Image, ImageTk
+        # Resize based on current zoom factor
+        img = self.original_image.copy()
+        width, height = img.size
+        new_size = (int(width * self.zoom_factor), int(height * self.zoom_factor))
+        img = img.resize(new_size, Image.LANCZOS)
+
+        # Store the current image object
+        self.current_image_obj = ImageTk.PhotoImage(img)
+
+        # Clear previous images
+        self.canvas.delete("all")
+        # Center image on canvas
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         if canvas_width < 10 or canvas_height < 10:
-            # Default size if not yet rendered
             canvas_width = 500
             canvas_height = 400
-        img.thumbnail((canvas_width, canvas_height))
-        self.current_image = ImageTk.PhotoImage(img)
-        self.canvas.delete("all")
-        self.canvas.create_image(canvas_width/2, canvas_height/2, image=self.current_image)
+        self.canvas.create_image(canvas_width/2, canvas_height/2, image=self.current_image_obj, anchor=tk.CENTER)
+        
+    def zoom_in(self):
+        self.zoom_factor *= 1.2  # Increase zoom
+        self.render_image()
+
+    def zoom_out(self):
+        self.zoom_factor /= 1.2  # Decrease zoom
+        self.render_image()
+
+    def auto_fit(self):
+        # Fit image to canvas size
+        from PIL import Image
+        if not hasattr(self, 'original_image'):
+            return
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        img_width, img_height = self.original_image.size
+
+        if canvas_width < 1 or canvas_height < 1:
+            # Default fallback
+            self.zoom_factor = 1.0
+        else:
+            width_ratio = canvas_width / img_width
+            height_ratio = canvas_height / img_height
+            self.zoom_factor = min(width_ratio, height_ratio)
+        self.render_image()
 
     def show_next_image(self):
         if not self.images:
