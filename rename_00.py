@@ -1,15 +1,14 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk # Import ttk
 from PIL import Image, ImageTk
 import shutil
 import os
-
 
 class FolderImageRenamer:
     def __init__(self, root):
         self.root = root
         self.root.title("Folder Image Renamer")
-        self.root.geometry("900x600")  # Slightly smaller window
+        self.root.geometry("900x600")
 
         # Variables
         self.folder_path = ""
@@ -18,35 +17,46 @@ class FolderImageRenamer:
         self.current_image_index = 0
         self.dest_folder_path = ""
         self.current_image_obj = None
-        self.zoom_factor = 1.0  # For zooming
+        self.zoom_factor = 1.0
+        self.original_image = None # Initialize original_image here
+        self.image_dropdown_values = tk.StringVar() # Variable to hold dropdown values
 
         # Setup UI
         self.setup_ui()
 
     def setup_ui(self):
-        # Left: Image Viewer (smaller than before)
-        self.image_frame = tk.Frame(self.root, width=500, height=600, bd=2, relief=tk.SUNKEN)
-        self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        # Main frames: left (for tools and image viewer) and right (for controls)
+        self.left_panel = tk.Frame(self.root)
+        self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-        # Create a frame for tools above the canvas
-        self.tools_frame = tk.Frame(self.image_frame)
-        self.tools_frame.pack(side=tk.LEFT, fill=tk.X)
+        self.right_frame = tk.Frame(self.root, width=450)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Add zoom buttons
+        # Inside left_panel: tools_frame on the left, image_frame next to it
+        self.tools_frame = tk.Frame(self.left_panel, bd=2, relief=tk.RAISED) # Raised relief for distinction
+        self.tools_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5) # Pack to the left, fill vertically
+
+        # Add zoom buttons vertically
+        tk.Label(self.tools_frame, text="Image Tools").pack(pady=5) # Optional title for tools
         self.zoom_in_btn = tk.Button(self.tools_frame, text="Zoom In", command=self.zoom_in)
-        self.zoom_in_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        self.zoom_in_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
         self.zoom_out_btn = tk.Button(self.tools_frame, text="Zoom Out", command=self.zoom_out)
-        self.zoom_out_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        self.zoom_out_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
         self.auto_fit_btn = tk.Button(self.tools_frame, text="Auto Fit", command=self.auto_fit)
-        self.auto_fit_btn.pack(side=tk.LEFT, padx=5, pady=5)
+        self.auto_fit_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
         
+        # Image Viewer (fills remaining space in left_panel)
+        self.image_frame = tk.Frame(self.left_panel, bd=2, relief=tk.SUNKEN)
+        self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True) # Pack to the left, expand
+
         # Canvas for image display
         self.canvas = tk.Canvas(self.image_frame, bg='gray')
         self.canvas.pack(fill=tk.BOTH, expand=True)
+        self.canvas.bind("<Configure>", self.on_canvas_resize) # Bind resize event
 
         # Right: Controls and lists
-        self.right_frame = tk.Frame(self.root, width=450)
-        self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
+        # info_frame, dest_frame, subfolder_frame, button_frame, copy_folder_btn, renamed_frame
+        # These remain largely the same, just attached to self.right_frame
 
         # Folder info and renaming
         info_frame = tk.Frame(self.right_frame)
@@ -84,6 +94,11 @@ class FolderImageRenamer:
         self.load_folder_btn = tk.Button(button_frame, text="Select Folder", command=self.load_folder)
         self.load_folder_btn.pack(side=tk.LEFT, padx=5)
 
+        # Dropdown for image selection
+        self.image_selection_dropdown = ttk.Combobox(button_frame, textvariable=self.image_dropdown_values, state="readonly", width=5)
+        self.image_selection_dropdown.pack(side=tk.LEFT, padx=5)
+        self.image_selection_dropdown.bind("<<ComboboxSelected>>", self.on_image_select_from_dropdown)
+        
         self.next_image_btn = tk.Button(button_frame, text="Next Image", command=self.show_next_image)
         self.next_image_btn.pack(side=tk.LEFT, padx=5)
 
@@ -102,6 +117,10 @@ class FolderImageRenamer:
         self.renamed_listbox = tk.Listbox(renamed_frame, height=5)
         self.renamed_listbox.pack(fill=tk.X)
 
+        # Initial message in canvas
+        self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="Select a folder to begin", fill="black", font=("Arial", 16))
+
+
     def load_folder(self):
         folder_selected = filedialog.askdirectory()
         if folder_selected:
@@ -109,8 +128,7 @@ class FolderImageRenamer:
             self.original_folder_entry.delete(0, tk.END)
             self.original_folder_entry.insert(0, os.path.basename(folder_selected))
             self.load_subfolders()
-            self.load_images()
-            self.display_image(0)
+            self.load_images_from_path(self.folder_path)
 
     def load_subfolders(self):
         self.subfolders = []
@@ -121,86 +139,105 @@ class FolderImageRenamer:
                 self.subfolders.append(entry)
                 self.subfolder_listbox.insert(tk.END, entry)
 
-    def load_images(self):
-            self.images = []
-            for file in os.listdir(self.folder_path):
-                if file.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
-                    self.images.append(os.path.join(self.folder_path, file))
-            self.current_image_index = 0
-            if self.images:
-                self.load_current_image()
-
-    def load_current_image(self):
-            from PIL import Image
-            image_path = self.images[self.current_image_index]
-            self.original_image = Image.open(image_path)
-            self.zoom_factor = 1.0  # Reset zoom when new image loads
-            self.render_image()
-
-
-    def display_image(self, index):
-        from PIL import Image, ImageTk
-        if not self.images:
-            self.canvas.delete("all")
-            self.canvas.create_text(250, 200, text="No images found", fill="black", font=("Arial", 16))
-            return
-        image_path = self.images[index]
-        #img = Image.open(image_path)
-        self.original_image = Image.open(image_path)
-        self.zoom_factor = 1.0  # Reset zoom factor when loading new image
-        self.render_image()
+    def load_images_from_path(self, path):
+        """Loads image files from a given path and populates the dropdown."""
+        self.images = []
+        self.current_image_index = 0
+        for file_name in sorted(os.listdir(path)): # Sort for consistent order
+            full_path = os.path.join(path, file_name)
+            if os.path.isfile(full_path):
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                    self.images.append(full_path)
         
-        #Resize to fit canvas
-        #canvas_width = self.canvas.winfo_width()
-        #canvas_height = self.canvas.winfo_height()
-        #if canvas_width < 10 or canvas_height < 10:
-            # Default size if not yet rendered
-           ##canvas_height = 400
-        #img.thumbnail((canvas_width, canvas_height))
-        #self.current_image = ImageTk.PhotoImage(img)
-        #self.canvas.delete("all")
-        #self.canvas.create_image(canvas_width/2, canvas_height/2, image=self.current_image)
-    
+        # Update the dropdown values
+        if self.images:
+            image_numbers = [str(i + 1) for i in range(len(self.images))]
+            self.image_selection_dropdown['values'] = image_numbers
+            self.image_selection_dropdown.set(image_numbers[0]) # Set default to first image
+            self.load_and_render_current_image() # Initial load and render
+        else:
+            self.canvas.delete("all")
+            self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="No images found", fill="black", font=("Arial", 16))
+            self.original_image = None
+            self.current_image_obj = None # Clear previous image
+            self.image_selection_dropdown['values'] = [] # Clear dropdown
+            self.image_selection_dropdown.set('') # Clear dropdown selection
+
+
+    def load_and_render_current_image(self):
+        """Loads the current image and renders it, ensuring auto-fit."""
+        if not self.images:
+            return
+
+        image_path = self.images[self.current_image_index]
+        try:
+            self.original_image = Image.open(image_path)
+            self.auto_fit() # Directly call auto_fit to fit the image to the canvas
+        except FileNotFoundError:
+            messagebox.showerror("File Error", f"Image file not found: {image_path}")
+            self.original_image = None
+            self.canvas.delete("all")
+            self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="Image not found", fill="black", font=("Arial", 16))
+        except Exception as e:
+            messagebox.showerror("Image Error", f"Could not load image {image_path}: {e}")
+            self.original_image = None
+            self.canvas.delete("all")
+            self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="Error loading image", fill="black", font=("Arial", 16))
+
+
+    def display_image(self):
+        """Prepares and displays the image for the current index."""
+        self.load_and_render_current_image()
+
     def render_image(self):
-        from PIL import Image, ImageTk
-        # Resize based on current zoom factor
+        """Renders the current original_image onto the canvas with zoom."""
+        if self.original_image is None:
+            self.canvas.delete("all")
+            return
+
         img = self.original_image.copy()
         width, height = img.size
         new_size = (int(width * self.zoom_factor), int(height * self.zoom_factor))
+        
+        # Ensure new_size dimensions are positive
+        if new_size[0] <= 0 or new_size[1] <= 0:
+            new_size = (1, 1) # Fallback to a tiny size to avoid errors
+
         img = img.resize(new_size, Image.LANCZOS)
 
-        # Store the current image object
         self.current_image_obj = ImageTk.PhotoImage(img)
 
-        # Clear previous images
         self.canvas.delete("all")
-        # Center image on canvas
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
+        
+        # Fallback for initial canvas size
         if canvas_width < 10 or canvas_height < 10:
-            canvas_width = 500
-            canvas_height = 400
+            canvas_width = self.canvas.winfo_reqwidth()
+            canvas_height = self.canvas.winfo_reqheight()
+
         self.canvas.create_image(canvas_width/2, canvas_height/2, image=self.current_image_obj, anchor=tk.CENTER)
         
     def zoom_in(self):
-        self.zoom_factor *= 1.2  # Increase zoom
-        self.render_image()
+        if self.original_image:
+            self.zoom_factor *= 1.2
+            self.render_image()
 
     def zoom_out(self):
-        self.zoom_factor /= 1.2  # Decrease zoom
-        self.render_image()
+        if self.original_image:
+            self.zoom_factor /= 1.2
+            self.render_image()
 
     def auto_fit(self):
-        # Fit image to canvas size
-        from PIL import Image
-        if not hasattr(self, 'original_image'):
+        if not self.original_image:
             return
+        
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         img_width, img_height = self.original_image.size
 
         if canvas_width < 1 or canvas_height < 1:
-            # Default fallback
+            # Fallback if canvas size is not yet determined
             self.zoom_factor = 1.0
         else:
             width_ratio = canvas_width / img_width
@@ -208,11 +245,32 @@ class FolderImageRenamer:
             self.zoom_factor = min(width_ratio, height_ratio)
         self.render_image()
 
+    def on_canvas_resize(self, event):
+        """Called when the canvas is resized."""
+        if self.original_image:
+            self.auto_fit() # Re-fit image to new canvas size
+
     def show_next_image(self):
         if not self.images:
             return
         self.current_image_index = (self.current_image_index + 1) % len(self.images)
-        self.display_image(self.current_image_index)
+        # Update dropdown to reflect new index
+        self.image_selection_dropdown.set(str(self.current_image_index + 1))
+        self.display_image()
+
+    def on_image_select_from_dropdown(self, event):
+        """Handles selection from the image number dropdown."""
+        selected_number_str = self.image_selection_dropdown.get()
+        if selected_number_str:
+            try:
+                selected_index = int(selected_number_str) - 1 # Convert to 0-based index
+                if 0 <= selected_index < len(self.images):
+                    self.current_image_index = selected_index
+                    self.display_image()
+            except ValueError:
+                # Should not happen with state="readonly" but good for robustness
+                pass
+
 
     def on_subfolder_select(self, event):
         selection = event.widget.curselection()
@@ -222,17 +280,9 @@ class FolderImageRenamer:
             # Update original folder name entry
             self.original_folder_entry.delete(0, tk.END)
             self.original_folder_entry.insert(0, folder_name)
-            # Load first image of selected subfolder
-            self.load_images_from_subfolder(folder_name)
-            self.display_image(0)
-
-    def load_images_from_subfolder(self, subfolder_name):
-        subfolder_path = os.path.join(self.folder_path, subfolder_name)
-        self.images = []
-        for file in os.listdir(subfolder_path):
-            if file.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                self.images.append(os.path.join(subfolder_path, file))
-        self.current_image_index = 0
+            # Load images of selected subfolder
+            subfolder_path = os.path.join(self.folder_path, folder_name)
+            self.load_images_from_path(subfolder_path)
 
     def select_dest_folder(self):
         dest_folder = filedialog.askdirectory()
@@ -272,8 +322,6 @@ class FolderImageRenamer:
             messagebox.showerror("Error", str(e))
 
 if __name__ == "__main__":
-    # Ensure PIL is available
-    from PIL import Image, ImageTk
     root = tk.Tk()
     app = FolderImageRenamer(root)
     root.mainloop()
