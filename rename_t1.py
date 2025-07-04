@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk # Import ttk
+from tkinter import filedialog, messagebox, ttk
 from PIL import Image, ImageTk
 import shutil
 import os
@@ -18,14 +18,14 @@ class FolderImageRenamer:
         self.dest_folder_path = ""
         self.current_image_obj = None
         self.zoom_factor = 1.0
-        self.original_image = None # Initialize original_image here
-        self.image_dropdown_values = tk.StringVar() # Variable to hold dropdown values
+        self.original_image = None
+        self.image_dropdown_values = tk.StringVar()
 
         # Setup UI
         self.setup_ui()
 
     def setup_ui(self):
-        # Main frames: left (for tools and image viewer) and right (for controls)
+        # Main frames: left (for tools, navigation, and image viewer) and right (for controls)
         self.left_panel = tk.Frame(self.root)
         self.left_panel.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -33,45 +33,72 @@ class FolderImageRenamer:
         self.right_frame.pack(side=tk.RIGHT, fill=tk.Y)
 
         # Inside left_panel: tools_frame on the left, image_frame next to it
-        self.tools_frame = tk.Frame(self.left_panel, bd=2, relief=tk.RAISED) # Raised relief for distinction
-        self.tools_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5) # Pack to the left, fill vertically
+        self.tools_frame = tk.Frame(self.left_panel, bd=2, relief=tk.RAISED)
+        self.tools_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5)
 
         # Add zoom buttons vertically
-        tk.Label(self.tools_frame, text="Image Tools").pack(pady=5) # Optional title for tools
+        tk.Label(self.tools_frame, text="Image Tools").pack(pady=5)
         self.zoom_in_btn = tk.Button(self.tools_frame, text="Zoom In", command=self.zoom_in)
-        self.zoom_in_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
+        self.zoom_in_btn.pack(side=tk.TOP, padx=5, pady=5)
         self.zoom_out_btn = tk.Button(self.tools_frame, text="Zoom Out", command=self.zoom_out)
-        self.zoom_out_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
+        self.zoom_out_btn.pack(side=tk.TOP, padx=5, pady=5)
         self.auto_fit_btn = tk.Button(self.tools_frame, text="Auto Fit", command=self.auto_fit)
-        self.auto_fit_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
+        self.auto_fit_btn.pack(side=tk.TOP, padx=5, pady=5)
         
-        # Image Viewer (fills remaining space in left_panel)
+        # --- NEW UI ELEMENTS FOR PAGE NAVIGATION (matching tool_1.PNG) ---
+        self.page_navigation_frame = tk.Frame(self.left_panel, bd=2, relief=tk.GROOVE)
+        self.page_navigation_frame.pack(side=tk.TOP, fill=tk.X, padx=5, pady=5)
+
+        self.pages_loaded_label = tk.Label(self.page_navigation_frame, text="Pages: 0 of 0 loaded")
+        self.pages_loaded_label.pack(pady=(5,0))
+
+        # Frame for "< Page X of Y >"
+        nav_buttons_row_frame = tk.Frame(self.page_navigation_frame)
+        nav_buttons_row_frame.pack(pady=5)
+
+        self.prev_button = tk.Button(nav_buttons_row_frame, text="<", command=self.show_previous_image)
+        self.prev_button.pack(side=tk.LEFT, padx=2)
+
+        self.page_number_label = tk.Label(nav_buttons_row_frame, text="Page 0 of 0", width=12)
+        self.page_number_label.pack(side=tk.LEFT, padx=5)
+
+        self.next_button = tk.Button(nav_buttons_row_frame, text=">", command=self.show_next_image)
+        self.next_button.pack(side=tk.LEFT, padx=2)
+
+        # Frame for "Goto Page" dropdown
+        goto_page_frame = tk.Frame(self.page_navigation_frame)
+        goto_page_frame.pack(pady=5)
+
+        tk.Label(goto_page_frame, text="Goto Page").pack(side=tk.LEFT, padx=5)
+        self.image_selection_dropdown = ttk.Combobox(goto_page_frame, textvariable=self.image_dropdown_values, state="readonly", width=5)
+        self.image_selection_dropdown.pack(side=tk.LEFT, padx=5)
+        self.image_selection_dropdown.bind("<<ComboboxSelected>>", self.on_image_select_from_dropdown)
+        # --- END NEW UI ELEMENTS ---
+        
+        # Image Viewer (fills remaining space in left_panel, now below navigation)
         self.image_frame = tk.Frame(self.left_panel, bd=2, relief=tk.SUNKEN)
-        self.image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True) # Pack to the left, expand
+        self.image_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         # Canvas for image display
         self.canvas = tk.Canvas(self.image_frame, bg='gray')
         self.canvas.pack(fill=tk.BOTH, expand=True)
-        self.canvas.bind("<Configure>", self.on_canvas_resize) # Bind resize event
+        self.canvas.bind("<Configure>", self.on_canvas_resize)
+
 
         # Right: Controls and lists
-        # info_frame, dest_frame, subfolder_frame, button_frame, copy_folder_btn, renamed_frame
-        # These remain largely the same, just attached to self.right_frame
-
-        # Folder info and renaming
         info_frame = tk.Frame(self.right_frame)
         info_frame.pack(pady=10, fill=tk.X, padx=10)
 
         tk.Label(info_frame, text="Original Folder Name:").grid(row=0, column=0, sticky=tk.W)
-        self.original_folder_entry = tk.Entry(info_frame, width=25)
-        self.original_folder_entry.grid(row=0, column=1, padx=5)
+        # CHANGED: original_folder_entry to original_folder_label
+        self.original_folder_label = tk.Label(info_frame, text="", width=25, anchor="w")
+        self.original_folder_label.grid(row=0, column=1, padx=5, sticky=tk.W)
 
         tk.Label(info_frame, text="Enter New Folder Name:").grid(row=1, column=0, sticky=tk.W)
         self.new_folder_entry = tk.Entry(info_frame, width=25)
         self.new_folder_entry.grid(row=1, column=1, padx=5)
-        
-        # Bind the Enter key to trigger copy_and_rename_folder
         self.new_folder_entry.bind("<Return>", lambda event: self.copy_and_rename_folder())
+
 
         # Destination folder selection
         dest_frame = tk.Frame(self.right_frame)
@@ -96,15 +123,6 @@ class FolderImageRenamer:
         button_frame = tk.Frame(self.right_frame)
         self.load_folder_btn = tk.Button(button_frame, text="Select Folder", command=self.load_folder)
         self.load_folder_btn.pack(side=tk.LEFT, padx=5)
-
-        # Dropdown for image selection
-        self.image_selection_dropdown = ttk.Combobox(button_frame, textvariable=self.image_dropdown_values, state="readonly", width=5)
-        self.image_selection_dropdown.pack(side=tk.LEFT, padx=5)
-        self.image_selection_dropdown.bind("<<ComboboxSelected>>", self.on_image_select_from_dropdown)
-        
-        self.next_image_btn = tk.Button(button_frame, text="Next Image", command=self.show_next_image)
-        self.next_image_btn.pack(side=tk.LEFT, padx=5)
-
         button_frame.pack(pady=10, fill=tk.X, padx=10)
         
         # "Copy and Rename Folder" button positioned separately
@@ -123,15 +141,23 @@ class FolderImageRenamer:
         # Initial message in canvas
         self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="Select a folder to begin", fill="black", font=("Arial", 16))
 
+        self.update_navigation_buttons_state()
 
     def load_folder(self):
         folder_selected = filedialog.askdirectory()
         if folder_selected:
             self.folder_path = folder_selected
-            self.original_folder_entry.delete(0, tk.END)
-            self.original_folder_entry.insert(0, os.path.basename(folder_selected))
+            # CHANGED: Use config for Label
+            self.original_folder_label.config(text=os.path.basename(folder_selected))
             self.load_subfolders()
-            self.load_images_from_path(self.folder_path)
+            if self.subfolders:
+                self.subfolder_listbox.selection_clear(0, tk.END)
+                self.subfolder_listbox.selection_set(0)
+                self.subfolder_listbox.activate(0)
+                self.subfolder_listbox.event_generate("<<ListboxSelect>>")
+            else:
+                self.load_images_from_path(self.folder_path)
+                self.update_page_info_display()
 
     def load_subfolders(self):
         self.subfolders = []
@@ -143,39 +169,36 @@ class FolderImageRenamer:
                 self.subfolder_listbox.insert(tk.END, entry)
 
     def load_images_from_path(self, path):
-        """Loads image files from a given path and populates the dropdown."""
         self.images = []
         self.current_image_index = 0
-        for file_name in sorted(os.listdir(path)): # Sort for consistent order
+        for file_name in sorted(os.listdir(path)):
             full_path = os.path.join(path, file_name)
             if os.path.isfile(full_path):
-                if file_name.lower().endswith(('.png', '.jpg', '.jpeg','.bmp')):
+                if file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
                     self.images.append(full_path)
         
-        # Update the dropdown values
         if self.images:
             image_numbers = [str(i + 1) for i in range(len(self.images))]
             self.image_selection_dropdown['values'] = image_numbers
-            self.image_selection_dropdown.set(image_numbers[0]) # Set default to first image
-            self.load_and_render_current_image() # Initial load and render
+            self.image_selection_dropdown.set(image_numbers[0]) 
+            self.load_and_render_current_image()
         else:
             self.canvas.delete("all")
             self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="No images found", fill="black", font=("Arial", 16))
             self.original_image = None
-            self.current_image_obj = None # Clear previous image
-            self.image_selection_dropdown['values'] = [] # Clear dropdown
-            self.image_selection_dropdown.set('') # Clear dropdown selection
-
+            self.current_image_obj = None
+            self.image_selection_dropdown['values'] = []
+            self.image_selection_dropdown.set('')
+        self.update_page_info_display()
 
     def load_and_render_current_image(self):
-        """Loads the current image and renders it, ensuring auto-fit."""
         if not self.images:
             return
 
         image_path = self.images[self.current_image_index]
         try:
             self.original_image = Image.open(image_path)
-            self.auto_fit() # Directly call auto_fit to fit the image to the canvas
+            self.auto_fit()
         except FileNotFoundError:
             messagebox.showerror("File Error", f"Image file not found: {image_path}")
             self.original_image = None
@@ -187,13 +210,7 @@ class FolderImageRenamer:
             self.canvas.delete("all")
             self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="Error loading image", fill="black", font=("Arial", 16))
 
-
-    def display_image(self):
-        """Prepares and displays the image for the current index."""
-        self.load_and_render_current_image()
-
     def render_image(self):
-        """Renders the current original_image onto the canvas with zoom."""
         if self.original_image is None:
             self.canvas.delete("all")
             return
@@ -202,9 +219,8 @@ class FolderImageRenamer:
         width, height = img.size
         new_size = (int(width * self.zoom_factor), int(height * self.zoom_factor))
         
-        # Ensure new_size dimensions are positive
         if new_size[0] <= 0 or new_size[1] <= 0:
-            new_size = (1, 1) # Fallback to a tiny size to avoid errors
+            new_size = (1, 1)
 
         img = img.resize(new_size, Image.LANCZOS)
 
@@ -214,7 +230,6 @@ class FolderImageRenamer:
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         
-        # Fallback for initial canvas size
         if canvas_width < 10 or canvas_height < 10:
             canvas_width = self.canvas.winfo_reqwidth()
             canvas_height = self.canvas.winfo_reqheight()
@@ -240,7 +255,6 @@ class FolderImageRenamer:
         img_width, img_height = self.original_image.size
 
         if canvas_width < 1 or canvas_height < 1:
-            # Fallback if canvas size is not yet determined
             self.zoom_factor = 1.0
         else:
             width_ratio = canvas_width / img_width
@@ -249,30 +263,71 @@ class FolderImageRenamer:
         self.render_image()
 
     def on_canvas_resize(self, event):
-        """Called when the canvas is resized."""
         if self.original_image:
-            self.auto_fit() # Re-fit image to new canvas size
+            self.auto_fit()
 
     def show_next_image(self):
         if not self.images:
             return
-        self.current_image_index = (self.current_image_index + 1) % len(self.images)
-        # Update dropdown to reflect new index
-        self.image_selection_dropdown.set(str(self.current_image_index + 1))
-        self.display_image()
+        if self.current_image_index < len(self.images) - 1:
+            self.current_image_index += 1
+            self.load_and_render_current_image()
+            self.update_page_info_display()
+
+    def show_previous_image(self):
+        if not self.images:
+            return
+        if self.current_image_index > 0:
+            self.current_image_index -= 1
+            self.load_and_render_current_image()
+            self.update_page_info_display()
 
     def on_image_select_from_dropdown(self, event):
-        """Handles selection from the image number dropdown."""
         selected_number_str = self.image_selection_dropdown.get()
         if selected_number_str:
             try:
-                selected_index = int(selected_number_str) - 1 # Convert to 0-based index
+                selected_index = int(selected_number_str) - 1
                 if 0 <= selected_index < len(self.images):
                     self.current_image_index = selected_index
-                    self.display_image()
+                    self.load_and_render_current_image()
+                    self.update_page_info_display()
             except ValueError:
-                # Should not happen with state="readonly" but good for robustness
                 pass
+
+    def update_page_info_display(self):
+        total_images = len(self.images)
+        if total_images > 0:
+            current_page_num = self.current_image_index + 1
+            self.pages_loaded_label.config(text=f"Pages: {total_images} of {total_images} loaded")
+            self.page_number_label.config(text=f"Page {current_page_num} of {total_images}")
+            self.image_selection_dropdown.set(str(current_page_num))
+            self.update_navigation_buttons_state()
+        else:
+            self.pages_loaded_label.config(text="Pages: 0 of 0 loaded")
+            self.page_number_label.config(text="Page 0 of 0")
+            self.image_selection_dropdown['values'] = []
+            self.image_selection_dropdown.set('')
+            self.update_navigation_buttons_state()
+
+    def update_navigation_buttons_state(self):
+        if not self.images:
+            self.next_button.config(state=tk.DISABLED)
+            self.prev_button.config(state=tk.DISABLED)
+            self.image_selection_dropdown.config(state="disabled")
+            self.image_dropdown_values.set('')
+            return
+
+        self.image_selection_dropdown.config(state="readonly")
+
+        if self.current_image_index == len(self.images) - 1:
+            self.next_button.config(state=tk.DISABLED)
+        else:
+            self.next_button.config(state=tk.NORMAL)
+
+        if self.current_image_index == 0:
+            self.prev_button.config(state=tk.DISABLED)
+        else:
+            self.prev_button.config(state=tk.NORMAL)
 
 
     def on_subfolder_select(self, event):
@@ -280,10 +335,8 @@ class FolderImageRenamer:
         if selection:
             index = selection[0]
             folder_name = self.subfolders[index]
-            # Update original folder name entry
-            self.original_folder_entry.delete(0, tk.END)
-            self.original_folder_entry.insert(0, folder_name)
-            # Load images of selected subfolder
+            # CHANGED: Use config for Label
+            self.original_folder_label.config(text=folder_name)
             subfolder_path = os.path.join(self.folder_path, folder_name)
             self.load_images_from_path(subfolder_path)
 
@@ -293,14 +346,24 @@ class FolderImageRenamer:
             self.dest_folder_path = dest_folder
             self.dest_folder_label.config(text=f"Destination Folder: {dest_folder}")
 
-    def copy_and_rename_folder(self , event=None):
+    def copy_and_rename_folder(self, event=None):
         if not self.folder_path:
             messagebox.showwarning("No Folder Selected", "Please select a main folder first.")
             return
         if not self.dest_folder_path:
             messagebox.showwarning("No Destination Folder", "Please select a destination folder.")
             return
-        old_name = self.original_folder_entry.get().strip()
+        
+        current_subfolder_index = -1
+        current_selection = self.subfolder_listbox.curselection()
+        if current_selection:
+            current_subfolder_index = current_selection[0]
+            # CHANGED: Use cget for Label
+            old_name = self.original_folder_label.cget("text").strip()
+        else:
+            # CHANGED: Use cget for Label
+            old_name = self.original_folder_label.cget("text").strip()
+
         new_name = self.new_folder_entry.get().strip()
 
         if not old_name or not new_name:
@@ -321,6 +384,28 @@ class FolderImageRenamer:
             shutil.copytree(source_path, target_path)
             self.renamed_listbox.insert(tk.END, new_name)
             messagebox.showinfo("Success", f"Folder copied to '{target_path}'")
+
+            if current_subfolder_index != -1 and current_subfolder_index < len(self.subfolders) - 1:
+                next_subfolder_index = current_subfolder_index + 1
+                self.subfolder_listbox.selection_clear(0, tk.END)
+                self.subfolder_listbox.selection_set(next_subfolder_index)
+                self.subfolder_listbox.activate(next_subfolder_index)
+                self.subfolder_listbox.event_generate("<<ListboxSelect>>")
+            elif current_subfolder_index == len(self.subfolders) - 1:
+                self.folder_path = ""
+                self.subfolders = []
+                self.images = []
+                # CHANGED: Use config for Label
+                self.original_folder_label.config(text="")
+                self.subfolder_listbox.delete(0, tk.END)
+                self.canvas.delete("all")
+                self.canvas.create_text(self.canvas.winfo_reqwidth()/2, self.canvas.winfo_reqheight()/2, text="All folders processed!", fill="black", font=("Arial", 16))
+                self.original_image = None
+                self.current_image_obj = None
+                self.image_selection_dropdown['values'] = []
+                self.image_selection_dropdown.set('')
+                self.update_page_info_display()
+
         except Exception as e:
             messagebox.showerror("Error", str(e))
 

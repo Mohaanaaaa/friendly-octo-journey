@@ -37,7 +37,7 @@ class FolderImageRenamer:
         self.tools_frame.pack(side=tk.LEFT, fill=tk.Y, padx=5, pady=5) # Pack to the left, fill vertically
 
         # Add zoom buttons vertically
-        tk.Label(self.tools_frame, text="Image Tools").pack(pady=5) # Optional title for tools
+        tk.Label(self.tools_frame, text="Image Tools").pack(pady=10) # Optional title for tools
         self.zoom_in_btn = tk.Button(self.tools_frame, text="Zoom In", command=self.zoom_in)
         self.zoom_in_btn.pack(side=tk.TOP, padx=5, pady=5) # Pack vertically
         self.zoom_out_btn = tk.Button(self.tools_frame, text="Zoom Out", command=self.zoom_out)
